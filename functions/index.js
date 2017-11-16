@@ -1,7 +1,6 @@
 const functions = require('firebase-functions');
 const IncomingWebhook = require('@slack/client').IncomingWebhook;
 const _ = require('lodash');
-const database = require('firebase/database');
 
 var WebClient = require('@slack/client').WebClient;
 
@@ -23,15 +22,26 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
     const mentionsBotherbot = event.text.indexOf('<@U80L6R525>') != -1;
 
     if (isDM || mentionsBotherbot) {
-      var token = process.env.SLACK_API_TOKEN || 'xoxp-273178083268-273274154853-272723308785-e943bd9789655d939ad75841deaf3dde'; //see section above on sensitive data
+      var token = functions.config().slack.api_key || ''; //see section above on sensitive data
 
       var web = new WebClient(token);
-      web.chat.postMessage(channel, 'Hello there - Welcome to botherbot', function(err, res) {
-          if (err) {
-              console.log('Error:', err);
-          } else {
-              console.log('Message sent: ', res);
-          }
+      console.log('getting name');
+      web.users.profile.get(token, {
+        user: event.user
+      }, (response) => {
+        if (err) {
+            console.log('Error:', err);
+        } else {
+          const name = response.profile.real_name;
+          console.log('name ',name);
+          web.chat.postMessage(channel, `Hello ${name} - Welcome to botherbot`, function(err, res) {
+              if (err) {
+                  console.log('Error:', err);
+              } else {
+                  console.log('Message sent: ', res);
+              }
+          });
+        }
       });
     }
     return response.send('not a thing');
