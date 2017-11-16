@@ -5,6 +5,15 @@ const DialogflowApp = require('actions-on-google').DialogflowApp; // Google Assi
 
 const googleAssistantRequest = 'google'; // Constant to identify Google Assistant requests
 
+const _ = require('lodash');
+
+const admin = require('firebase-admin');
+admin.initializeApp(functions.config().firebase);
+
+const IncomingWebhook = require('@slack/client').IncomingWebhook;
+const WebClient = require('@slack/client').WebClient;
+
+
 exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, response) => {
   console.log('Request headers: ' + JSON.stringify(request.headers));
   console.log('Request body: ' + JSON.stringify(request.body));
@@ -58,11 +67,13 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
     },
     'vote': () => {
       // Use the Actions on Google lib to respond to Google requests; for other requests use JSON
+
+      response = handleVote(request);
       let responseToUser = {
         //richResponses: richResponses, // Optional, uncomment to enable
         //outputContexts: [{'name': 'weather', 'lifespan': 2, 'parameters': {'city': 'Rome'}}], // Optional, uncomment to enable
-        speech: request.body.result.fulfillment.speech, // spoken response
-        displayText: request.body.result.fulfillment.speech // displayed response
+        speech: response, // spoken response
+        displayText: response // displayed response
       };
       sendResponse(responseToUser);
     },
@@ -149,66 +160,141 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
   }
 });
 
-// Construct rich response for Google Assistant
-const app = new DialogflowApp();
-const googleRichResponse = app.buildRichResponse()
-  .addSimpleResponse('This is the first simple response for Google Assistant')
-  .addSuggestions(
-    ['Suggestion Chip', 'Another Suggestion Chip'])
-    // Create a basic card and add it to the rich response
-  .addBasicCard(app.buildBasicCard(`This is a basic card.  Text in a
- basic card can include "quotes" and most other unicode characters
- including emoji 📱.  Basic cards also support some markdown
- formatting like *emphasis* or _italics_, **strong** or __bold__,
- and ***bold itallic*** or ___strong emphasis___ as well as other things
- like line  \nbreaks`) // Note the two spaces before '\n' required for a
-                        // line break to be rendered in the card
-    .setSubtitle('This is a subtitle')
-    .setTitle('Title: this is a title')
-    .addButton('This is a button', 'https://assistant.google.com/')
-    .setImage('https://developers.google.com/actions/images/badges/XPM_BADGING_GoogleAssistant_VER.png',
-      'Image alternate text'))
-  .addSimpleResponse({ speech: 'This is another simple response',
-    displayText: 'This is the another simple response 💁' });
 
-// Rich responses for both Slack and Facebook
-const richResponses = {
-  'slack': {
-    'text': 'This is a text response for Slack.',
-    'attachments': [
-      {
-        'title': 'Title: this is a title',
-        'title_link': 'https://assistant.google.com/',
-        'text': 'This is an attachment.  Text in attachments can include \'quotes\' and most other unicode characters including emoji 📱.  Attachments also upport line\nbreaks.',
-        'image_url': 'https://developers.google.com/actions/images/badges/XPM_BADGING_GoogleAssistant_VER.png',
-        'fallback': 'This is a fallback.'
-      }
-    ]
-  },
-  'facebook': {
-    'attachment': {
-      'type': 'template',
-      'payload': {
-        'template_type': 'generic',
-        'elements': [
-          {
-            'title': 'Title: this is a title',
-            'image_url': 'https://developers.google.com/actions/images/badges/XPM_BADGING_GoogleAssistant_VER.png',
-            'subtitle': 'This is a subtitle',
-            'default_action': {
-              'type': 'web_url',
-              'url': 'https://assistant.google.com/'
-            },
-            'buttons': [
-              {
-                'type': 'web_url',
-                'url': 'https://assistant.google.com/',
-                'title': 'This is a button'
-              }
-            ]
+
+// // Create and Deploy Your First Cloud Functions
+// // https://firebase.google.com/docs/functions/write-firebase-functions
+//
+exports.botHandleMessage = functions.https.onRequest((request, response) => {
+  if(request.body.challenge) {
+    return response.send(request.body.challenge);
+  }
+
+  if (request.body.event.type === 'message' && request.body.event.subtype !== 'bot_message') {
+    const event = request.body.event;
+    const channel = event.channel;
+
+    // channel D---- = dm, C---- = channel G = other
+    const isDM = channel.charAt(0) === 'D';
+    const mentionsBotherbot = event.text.indexOf('<@U80L6R525>') !== -1;
+
+    if (isDM || mentionsBotherbot) {
+      var token = functions.config().slack.api_key || ''; //see section above on sensitive data
+      var web = new WebClient(token);
+
+      web.chat.postMessage(channel, `Hello there - Welcome to botherbot`, function(err, res) {
+          if (err) {
+              console.log('Error:', err);
+          } else {
+              console.log('Message sent: ', res);
           }
-        ]
-      }
+      });
     }
   }
+});
+
+exports.startSurvey = functions.https.onRequest((request, response) => {
+  admin.database().ref('pubs').once('value', data => {
+    const pubs = {};
+    data.forEach(d => {
+      pubs[d.key] = d.child('name').val();
+    });
+    admin.database().ref('surveys/' + getWeek()).set({
+      ts: new Date().toTimeString(),
+      pubs: pubs,
+      votes: {},
+      booked: false,
+    });
+    const message = 'It\'s that time of the week! Where does everyone want to go for pub lunch on Friday?'
+    + ' Your options are '
+    + _.values(pubs).join(', ').replace(/,(?!.*,)/gmi, ' and')
+    + '.'
+    response.send(message);
+  })
+});
+
+const handleVote = (request) => {
+  const user = request.body.user;
+  const option = request.body.option;
+
+  // find the pub's id
+  admin.database().ref('surveys/' + getWeek() + '/pubs').once('value', data => {
+    const pubs = data.val();
+    let realName;
+    let vote;
+    _.forOwn(pubs, (name, id) => {
+      if (name.toLowerCase() === option.toLowerCase()) {
+        realName = name;
+        vote = id;
+      }
+    });
+
+    if (!vote) {
+      return 'Sorry, that\'s not one of your options.';
+    }
+
+    admin.database().ref('surveys/' + getWeek() + '/votes/' + user).set(vote);
+    return 'That\'s one more for ' + realName + '!';
+  })
+};
+
+exports.stopSurvey = functions.https.onRequest((request, response) => {
+  admin.database().ref('surveys/' + getWeek() + '/votes').once('value', data => {
+    const votes = data.val();
+    const counts = {};
+
+    // figure out winner
+    _.forOwn(votes, (pub, user) => {
+      counts[pub] = counts[pub] ? _.concat(counts[pub], user) : [user];
+    });
+
+    let winner;
+    let voters;
+    let max = 0;
+
+    _.forOwn(counts, (votes, pub) => {
+      if (votes.length > max) {
+        max = votes.length;
+        winner = pub;
+        voters = votes;
+      }
+    });
+
+    // choose a booker
+    const booker = voters[Math.floor(Math.random() * voters.length)];
+
+    admin.database().ref('surveys/' + getWeek() + '/winner').set(winner);
+    admin.database().ref('surveys/' + getWeek() + '/booker').set(booker);
+
+    admin.database().ref('pubs/' + winner + '/name').once('value', data => {
+      const pubName = data.val();
+
+      response.send('The votes are in! This week we\'re headed to ' + pubName + '.'
+          + ' ' + booker + ' is in charge of booking.');
+    });
+  });
+});
+
+exports.nag = functions.https.onRequest((request, response) => {
+  admin.database().ref('surveys/' + getWeek()).once('value', data => {
+    const survey = data.val();
+
+    if (!survey.booked) {
+      return response.send('Get to booking, ' + survey.booker);
+    }
+
+    response.send('ok');
+  });
+});
+
+exports.handleBooked = functions.https.onRequest((request, response) => {
+  admin.database().ref('surveys/' + getWeek() + '/booked').set(true);
+  response.send('ok');
+});
+
+getWeek = function() {
+  const now = new Date();
+  const onejan = new Date(now.getFullYear(),0,1);
+  const millisecsInDay = 86400000;
+  return Math.ceil((((now - onejan) /millisecsInDay) + onejan.getDay()+1)/7).toString();
 };

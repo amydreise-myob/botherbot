@@ -7,10 +7,14 @@ admin.initializeApp(functions.config().firebase);
 const IncomingWebhook = require('@slack/client').IncomingWebhook;
 const WebClient = require('@slack/client').WebClient;
 
+var apiai = require('apiai');
+var app = apiai("d5280deb7e45489880f94d53dd859661");
+var token = functions.config().slack.api_key || ''; //see section above on sensitive data
+var web = new WebClient(token);
 
 // // Create and Deploy Your First Cloud Functions
 // // https://firebase.google.com/docs/functions/write-firebase-functions
-//
+
 exports.botHandleMessage = functions.https.onRequest((request, response) => {
   if(request.body.challenge) {
     return response.send(request.body.challenge);
@@ -19,26 +23,50 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
   if (request.body.event.type === 'message' && request.body.event.subtype !== 'bot_message') {
     const event = request.body.event;
     const channel = event.channel;
+    console.log('request.body---------------', request.body);
+    const userId = event.user;
 
     // channel D---- = dm, C---- = channel G = other
     const isDM = channel.charAt(0) === 'D';
     const mentionsBotherbot = event.text.indexOf('<@U80L6R525>') !== -1;
-
+    response.send('ok');
     if (isDM || mentionsBotherbot) {
-      var token = functions.config().slack.api_key || ''; //see section above on sensitive data
-      var web = new WebClient(token);
+      const request = app.textRequest(event.text, {
+        sessionId: '3'
+      });
+      request.on('response', function(res) {
+        const text = res.result.fulfillment.displayText;
+        const messages = res.result.fulfillment.messages[0].speech;
+        const reply = text || messages;
+        const vote = res.result.parameters.pub;
 
-      web.chat.postMessage(channel, `Hello there - Welcome to botherbot`, function(err, res) {
+
+        console.log(res.result.action === 'vote', vote, userId);
+        if (res.result.action === 'vote' && vote) {
+          handleVote(userId, vote);
+        }
+
+        web.chat.postMessage(channel, reply, function(err, res) {
           if (err) {
               console.log('Error:', err);
           } else {
-              console.log('Message sent: ', res);
+            console.log('Message sent: ', res);
           }
+          return response.send('ok');
+        });
+        return;
       });
+      
+      request.on('error', function(error) {
+          console.log('error', error);
+          return response.send('ok');
+      });
+      request.end();
+      return;      
     }
-    return response.send('not a thing');
+    return;
   }
-  return response.send('not a thing');
+  return response;
 });
 
 exports.startSurvey = functions.https.onRequest((request, response) => {
@@ -57,14 +85,20 @@ exports.startSurvey = functions.https.onRequest((request, response) => {
     + ' Your options are '
     + _.values(pubs).join(', ').replace(/,(?!.*,)/gmi, ' and')
     + '.'
-    response.send(message);
+    // response.send(message);
+    const channel = '#pub-lunch';
+    web.chat.postMessage(channel, message, function(err, res) {
+      if (err) {
+          console.log('Error:', err);
+      } else {
+        console.log('Message sent: ', res);
+      }
+      return response.send('ok');
+    });
   })
 });
 
-exports.handleVote = functions.https.onRequest((request, response) => {
-  const user = request.body.user;
-  const option = request.body.option;
-
+ const handleVote = (user, option) => {
   // find the pub's id
   admin.database().ref('surveys/' + getWeek() + '/pubs').once('value', data => {
     const pubs = data.val();
@@ -78,13 +112,13 @@ exports.handleVote = functions.https.onRequest((request, response) => {
     });
 
     if (!vote) {
-      return response.send('Sorry, that\'s not one of your options.')
+      return 'Sorry, that\'s not one of your options.';
     }
 
     admin.database().ref('surveys/' + getWeek() + '/votes/' + user).set(vote);
-    return response.send('That\'s one more for ' + realName + '!');
+    return 'That\'s one more for ' + realName + '!';
   })
-});
+}
 
 exports.stopSurvey = functions.https.onRequest((request, response) => {
   admin.database().ref('surveys/' + getWeek() + '/votes').once('value', data => {
