@@ -23,25 +23,14 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
 
     if (isDM || mentionsBotherbot) {
       var token = functions.config().slack.api_key || ''; //see section above on sensitive data
-
       var web = new WebClient(token);
-      console.log('getting name');
-      web.users.profile.get(token, {
-        user: event.user
-      }, (response) => {
-        if (err) {
-            console.log('Error:', err);
-        } else {
-          const name = response.profile.real_name;
-          console.log('name ',name);
-          web.chat.postMessage(channel, `Hello ${name} - Welcome to botherbot`, function(err, res) {
-              if (err) {
-                  console.log('Error:', err);
-              } else {
-                  console.log('Message sent: ', res);
-              }
-          });
-        }
+
+      web.chat.postMessage(channel, `Hello there - Welcome to botherbot`, function(err, res) {
+          if (err) {
+              console.log('Error:', err);
+          } else {
+              console.log('Message sent: ', res);
+          }
       });
     }
     return response.send('not a thing');
