@@ -1,8 +1,11 @@
-const functions = require('firebase-functions');
-const IncomingWebhook = require('@slack/client').IncomingWebhook;
 const _ = require('lodash');
 
-var WebClient = require('@slack/client').WebClient;
+const functions = require('firebase-functions');
+const admin = require('firebase-admin');
+admin.initializeApp(functions.config().firebase);
+
+const IncomingWebhook = require('@slack/client').IncomingWebhook;
+const WebClient = require('@slack/client').WebClient;
 
 
 // // Create and Deploy Your First Cloud Functions
@@ -19,7 +22,7 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
 
     // channel D---- = dm, C---- = channel G = other
     const isDM = channel.charAt(0) === 'D';
-    const mentionsBotherbot = event.text.indexOf('<@U80L6R525>') != -1;
+    const mentionsBotherbot = event.text.indexOf('<@U80L6R525>') !== -1;
 
     if (isDM || mentionsBotherbot) {
       var token = functions.config().slack.api_key || ''; //see section above on sensitive data
@@ -37,6 +40,112 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
   }
   return response.send('not a thing');
 });
+
+exports.startSurvey = functions.https.onRequest((request, response) => {
+  admin.database().ref('pubs').once('value', data => {
+    const pubs = {};
+    data.forEach(d => {
+      pubs[d.key] = d.child('name').val();
+    });
+    admin.database().ref('surveys/' + getWeek()).set({
+      ts: new Date().toTimeString(),
+      pubs: pubs,
+      votes: {},
+      booked: false,
+    });
+    const message = 'It\'s that time of the week! Where does everyone want to go for pub lunch on Friday?'
+    + ' Your options are '
+    + _.values(pubs).join(', ').replace(/,(?!.*,)/gmi, ' and')
+    + '.'
+    response.send(message);
+  })
+});
+
+exports.handleVote = functions.https.onRequest((request, response) => {
+  const user = request.body.user;
+  const option = request.body.option;
+
+  // find the pub's id
+  admin.database().ref('surveys/' + getWeek() + '/pubs').once('value', data => {
+    const pubs = data.val();
+    let realName;
+    let vote;
+    _.forOwn(pubs, (name, id) => {
+      if (name.toLowerCase() === option.toLowerCase()) {
+        realName = name;
+        vote = id;
+      }
+    });
+
+    if (!vote) {
+      return response.send('Sorry, that\'s not one of your options.')
+    }
+
+    admin.database().ref('surveys/' + getWeek() + '/votes/' + user).set(vote);
+    return response.send('That\'s one more for ' + realName + '!');
+  })
+});
+
+exports.stopSurvey = functions.https.onRequest((request, response) => {
+  admin.database().ref('surveys/' + getWeek() + '/votes').once('value', data => {
+    const votes = data.val();
+    const counts = {};
+
+    // figure out winner
+    _.forOwn(votes, (pub, user) => {
+      counts[pub] = counts[pub] ? _.concat(counts[pub], user) : [user];
+    });
+
+    let winner;
+    let voters;
+    let max = 0;
+
+    _.forOwn(counts, (votes, pub) => {
+      if (votes.length > max) {
+        max = votes.length;
+        winner = pub;
+        voters = votes;
+      }
+    });
+
+    // choose a booker
+    const booker = voters[Math.floor(Math.random() * voters.length)];
+
+    admin.database().ref('surveys/' + getWeek() + '/winner').set(winner);
+    admin.database().ref('surveys/' + getWeek() + '/booker').set(booker);
+
+    admin.database().ref('pubs/' + winner + '/name').once('value', data => {
+      const pubName = data.val();
+
+      response.send('The votes are in! This week we\'re headed to ' + pubName + '.'
+          + ' ' + booker + ' is in charge of booking.');
+    });
+  });
+});
+
+exports.nag = functions.https.onRequest((request, response) => {
+  admin.database().ref('surveys/' + getWeek()).once('value', data => {
+    const survey = data.val();
+
+    if (!survey.booked) {
+      return response.send('Get to booking, ' + survey.booker);
+    }
+
+    response.send('ok');
+  });
+});
+
+exports.handleBooked = functions.https.onRequest((request, response) => {
+  admin.database().ref('surveys/' + getWeek() + '/booked').set(true);
+  response.send('ok');
+});
+
+getWeek = function() {
+  const now = new Date();
+  const onejan = new Date(now.getFullYear(),0,1);
+  const millisecsInDay = 86400000;
+  return Math.ceil((((now - onejan) /millisecsInDay) + onejan.getDay()+1)/7).toString();
+};
 
 //
 //             {
@@ -57,6 +166,23 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
 // "authed_users": [
 //   "U80L6R525"
 // ]
+
+  // admin.database().ref('pubs/meatdistrict').set({
+  //   name: 'Meat District',
+  //   website: 'https://www.meatdistrictco.com.au/'
+  // });
+  // admin.database().ref('pubs/lordnelson').set({
+  //   name: 'Lord Nelson',
+  //   website: 'https://www.lordnelsonbrewery.com/'
+  // });
+  // admin.database().ref('pubs/cargobar').set({
+  //   name: 'Cargo Bar',
+  //   website: 'https://cargobar.com.au/'
+  // });
+  // admin.database().ref('pubs/smallbar').set({
+  //   name: 'Small Bar',
+  //   website: 'http://www.smallbar.net.au/erskine-street/'
+  // });
 
 /*
 Posting to slack
