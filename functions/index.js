@@ -1,6 +1,10 @@
 const functions = require('firebase-functions');
 const IncomingWebhook = require('@slack/client').IncomingWebhook;
 const _ = require('lodash');
+const database = require('firebase/database');
+
+var WebClient = require('@slack/client').WebClient;
+
 
 // // Create and Deploy Your First Cloud Functions
 // // https://firebase.google.com/docs/functions/write-firebase-functions
@@ -14,20 +18,15 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
     const event = request.body.event;
     const channel = event.channel;
 
+    // channel D---- = dm, C---- = channel G = other
     const isDM = channel.charAt(0) === 'D';
     const mentionsBotherbot = event.text.indexOf('<@U80L6R525>') != -1;
 
-    // channel D---- = dm, C---- = channel G = other
-
     if (isDM || mentionsBotherbot) {
-      var url = process.env.SLACK_WEBHOOK_URL || 'https://hooks.slack.com/services/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'; //see section above on sensitive data
+      var token = process.env.SLACK_API_TOKEN || 'xoxp-273178083268-273274154853-272723308785-e943bd9789655d939ad75841deaf3dde'; //see section above on sensitive data
 
-      var webhook = new IncomingWebhook(url);
-
-      return webhook.send({
-          text: 'Hello there - I am the updated function',
-          channel: channel
-      }, function(err, res) {
+      var web = new WebClient(token);
+      web.chat.postMessage(channel, 'Hello there - Welcome to botherbot', function(err, res) {
           if (err) {
               console.log('Error:', err);
           } else {
@@ -38,7 +37,6 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
     return response.send('not a thing');
   }
   return response.send('not a thing');
- // return response.send("Hello from Firebase!");
 });
 
 //
