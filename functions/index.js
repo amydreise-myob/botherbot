@@ -15,8 +15,7 @@ var web = new WebClient(token);
 const uuidv4 = require('uuid/v4');
 
 exports.botHandleMessage = functions.https.onRequest((request, response) => {
-  console.log('handleMessage', request.body);
-  if(request.body.challenge) {
+  if (request.body.challenge) {
     return response.send(request.body.challenge);
   }
   if (request.body.event.type === 'message' && request.body.event.subtype !== 'bot_message') {
@@ -24,9 +23,9 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
     const channel = event.channel;
     const userId = event.user;
 
-    // channel D---- = dm, C---- = channel G = other
     const isDM = channel.charAt(0) === 'D';
-    const mentionsBotherbot = event.text.indexOf('<@U80L6R525>') !== -1;
+    const mentionsBotherbot = event.text && event.text.indexOf('<@U80L6R525>') !== -1;
+
     if (isDM || mentionsBotherbot) {
       const request = app.textRequest(event.text, {
         sessionId: uuidv4(),
@@ -51,10 +50,12 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
           return response.send('ok');
       });
       request.end();
+    } else {
+      return response.send('ok');
     }
   } else {
     return response.send('ok');
-  }    
+  }
 });
 
 const getResults = () => {
