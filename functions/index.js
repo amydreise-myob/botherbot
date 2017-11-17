@@ -23,7 +23,6 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
   if (request.body.event.type === 'message' && request.body.event.subtype !== 'bot_message') {
     const event = request.body.event;
     const channel = event.channel;
-    console.log('request.body---------------', request.body);
     const userId = event.user;
 
     // channel D---- = dm, C---- = channel G = other
@@ -40,20 +39,10 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
         const reply = text || messages;
         const vote = res.result.parameters.pub;
 
-
-        console.log(res.result.action === 'vote', vote, userId);
         if (res.result.action === 'vote' && vote) {
           handleVote(userId, vote);
         }
-
-        web.chat.postMessage(channel, reply, function(err, res) {
-          if (err) {
-              console.log('Error:', err);
-          } else {
-            console.log('Message sent: ', res);
-          }
-          return response.send('ok');
-        });
+        sendMessage(channel, reply);
         return;
       });
       
@@ -85,18 +74,20 @@ exports.startSurvey = functions.https.onRequest((request, response) => {
     + ' Your options are '
     + _.values(pubs).join(', ').replace(/,(?!.*,)/gmi, ' and')
     + '.'
-    // response.send(message);
-    const channel = '#pub-lunch';
-    web.chat.postMessage(channel, message, function(err, res) {
-      if (err) {
-          console.log('Error:', err);
-      } else {
-        console.log('Message sent: ', res);
-      }
-      return response.send('ok');
-    });
+    sendMessage('#pub-lunch', message);
   })
 });
+
+const sendMessage = (channel, message) => {
+  web.chat.postMessage(channel, message, {icon_emoji: ':hamburger:', username: 'LunchBot'}, function(err, res) {
+    if (err) {
+        console.log('Error:', err);
+    } else {
+      console.log('Message sent: ', res);
+    }
+    return response.send('ok');
+  });
+}
 
  const handleVote = (user, option) => {
   // find the pub's id
@@ -150,10 +141,10 @@ exports.stopSurvey = functions.https.onRequest((request, response) => {
 
     admin.database().ref('pubs/' + winner + '/name').once('value', data => {
       const pubName = data.val();
-
-      response.send('The votes are in! This week we\'re headed to ' + pubName + '.'
-          + ' ' + booker + ' is in charge of booking.');
+      sendMessage('#publunch', 'The votes are in! This week we\'re headed to ' + pubName + '.'
+      + ' <@' + booker + '> is in charge of booking.');
     });
+    
   });
 });
 
@@ -162,10 +153,8 @@ exports.nag = functions.https.onRequest((request, response) => {
     const survey = data.val();
 
     if (!survey.booked) {
-      return response.send('Get to booking, ' + survey.booker);
+      sendMessage(survey.booker, 'Get to booking, <@' + survey.booker + '>')
     }
-
-    response.send('ok');
   });
 });
 
@@ -181,8 +170,7 @@ getWeek = function() {
   return Math.ceil((((now - onejan) /millisecsInDay) + onejan.getDay()+1)/7).toString();
 };
 
-//
-//             {
+// {
 // "token": "G8eEV6kuLCPls9uHhtbqwQf6",
 // "team_id": "T81582F7W",
 // "api_app_id": "A817BELTE",
