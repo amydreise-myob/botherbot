@@ -12,14 +12,10 @@ var app = apiai("d5280deb7e45489880f94d53dd859661");
 var token = functions.config().slack.api_key || ''; //see section above on sensitive data
 var web = new WebClient(token);
 
-// // Create and Deploy Your First Cloud Functions
-// // https://firebase.google.com/docs/functions/write-firebase-functions
-
 exports.botHandleMessage = functions.https.onRequest((request, response) => {
   if(request.body.challenge) {
     return response.send(request.body.challenge);
   }
-
   if (request.body.event.type === 'message' && request.body.event.subtype !== 'bot_message') {
     const event = request.body.event;
     const channel = event.channel;
@@ -28,7 +24,6 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
     // channel D---- = dm, C---- = channel G = other
     const isDM = channel.charAt(0) === 'D';
     const mentionsBotherbot = event.text.indexOf('<@U80L6R525>') !== -1;
-    response.send('ok');
     if (isDM || mentionsBotherbot) {
       const request = app.textRequest(event.text, {
         sessionId: '3'
@@ -43,7 +38,7 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
           handleVote(userId, vote);
         }
         sendMessage(channel, reply);
-        return;
+        return response.send('ok');
       });
       
       request.on('error', function(error) {
@@ -51,11 +46,10 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
           return response.send('ok');
       });
       request.end();
-      return;      
     }
-    return;
-  }
-  return response;
+  } else {
+    return response.send('ok');
+  }    
 });
 
 exports.startSurvey = functions.https.onRequest((request, response) => {
@@ -75,7 +69,9 @@ exports.startSurvey = functions.https.onRequest((request, response) => {
     + _.values(pubs).join(', ').replace(/,(?!.*,)/gmi, ' and')
     + '.'
     sendMessage('#pub-lunch', message);
-  })
+    return response.send('ok');    
+  });
+  return response.send('ok');      
 });
 
 const sendMessage = (channel, message) => {
@@ -85,7 +81,7 @@ const sendMessage = (channel, message) => {
     } else {
       console.log('Message sent: ', res);
     }
-    return response.send('ok');
+    return;
   });
 }
 
@@ -143,9 +139,14 @@ exports.stopSurvey = functions.https.onRequest((request, response) => {
       const pubName = data.val();
       sendMessage('#publunch', 'The votes are in! This week we\'re headed to ' + pubName + '.'
       + ' <@' + booker + '> is in charge of booking.');
+      return response.send('ok');
+    
     });
+    return response.send('ok');    
     
   });
+      return response.send('ok');    
+  
 });
 
 exports.nag = functions.https.onRequest((request, response) => {
@@ -153,9 +154,13 @@ exports.nag = functions.https.onRequest((request, response) => {
     const survey = data.val();
 
     if (!survey.booked) {
-      sendMessage(survey.booker, 'Get to booking, <@' + survey.booker + '>')
+      sendMessage(survey.booker, 'Get to booking, <@' + survey.booker + '>');
+      return response.send('ok');    
     }
+    return response.send('ok');        
   });
+  return response.send('ok');
+  
 });
 
 exports.handleBooked = functions.https.onRequest((request, response) => {
