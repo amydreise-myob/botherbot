@@ -12,7 +12,10 @@ var app = apiai("d5280deb7e45489880f94d53dd859661");
 var token = functions.config().slack.api_key || ''; //see section above on sensitive data
 var web = new WebClient(token);
 
+const uuidv4 = require('uuid/v4');
+
 exports.botHandleMessage = functions.https.onRequest((request, response) => {
+  console.log('handleMessage', request.body);
   if(request.body.challenge) {
     return response.send(request.body.challenge);
   }
@@ -26,16 +29,18 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
     const mentionsBotherbot = event.text.indexOf('<@U80L6R525>') !== -1;
     if (isDM || mentionsBotherbot) {
       const request = app.textRequest(event.text, {
-        sessionId: '3'
+        sessionId: uuidv4(),
       });
       request.on('response', function(res) {
         const text = res.result.fulfillment.displayText;
         const messages = res.result.fulfillment.messages[0].speech;
-        const reply = text || messages;
-        const vote = res.result.parameters.pub;
+        var reply = text || messages;
 
-        if (res.result.action === 'vote' && vote) {
-          handleVote(userId, vote);
+        if (res.result.action === 'vote' && res.result.parameters.pub) {
+          handleVote(userId, res.result.parameters.pub);
+        }
+        if (res.result.action === 'result') {
+          reply = getResults();
         }
         sendMessage(channel, reply);
         return response.send('ok');
@@ -51,6 +56,21 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
     return response.send('ok');
   }    
 });
+
+const getResults = () => {
+  admin.database().ref('surveys/' + getWeek()).once('value', data => {
+    const pubs = {};
+    data.forEach(d => {
+      pubs[d.key] = d.child('name').val();
+    });
+    console.log(pubs);
+    const message = 'It\'s that time of the week! Where does everyone want to go for pub lunch on Friday?'
+    + ' Your options are '
+    + _.values(pubs).join(', ').replace(/,(?!.*,)/gmi, ' and')
+    + '.'
+    return message;
+  });
+}
 
 exports.startSurvey = functions.https.onRequest((request, response) => {
   admin.database().ref('pubs').once('value', data => {
