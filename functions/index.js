@@ -34,7 +34,8 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
       request.on('response', function(res) {
         const text = res.result.fulfillment.displayText;
         const messages = res.result.fulfillment.messages[0].speech;
-        var reply = text || messages;
+
+        var reply = text || res.result.fulfillment.messages[0].speech;
         var opts = {};
 
         if (res.result.action === 'vote' && res.result.parameters.pub) {
@@ -101,7 +102,6 @@ exports.startSurvey = functions.https.onRequest((request, response) => {
     sendMessage('#pub-lunch', message);
     return response.send('ok');
   });
-  return response.send('ok');
 });
 
 const sendMessage = (channel, message, opts) => {
@@ -170,16 +170,11 @@ exports.stopSurvey = functions.https.onRequest((request, response) => {
 
     admin.database().ref('pubs/' + winner + '/name').once('value', data => {
       const pubName = data.val();
-      sendMessage('#publunch', 'The votes are in! This week we\'re headed to ' + pubName + '.'
+      sendMessage('#pub-lunch', 'The votes are in! This week we\'re headed to ' + pubName + '.'
       + ' <@' + booker + '> is in charge of booking.');
       return response.send('ok');
-
     });
-    return response.send('ok');
-
   });
-      return response.send('ok');
-
 });
 
 exports.nag = functions.https.onRequest((request, response) => {
@@ -189,11 +184,10 @@ exports.nag = functions.https.onRequest((request, response) => {
     if (!survey.booked) {
       sendMessage(survey.booker, 'Get to booking, <@' + survey.booker + '>');
       return response.send('ok');
+    } else {
+      return response.send('ok');
     }
-    return response.send('ok');
   });
-  return response.send('ok');
-
 });
 
 exports.handleBooked = functions.https.onRequest((request, response) => {
