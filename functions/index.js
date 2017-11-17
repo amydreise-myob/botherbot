@@ -33,7 +33,9 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
       request.on('response', function(res) {
         const text = res.result.fulfillment.displayText;
         const messages = res.result.fulfillment.messages[0].speech;
+
         var reply = text || res.result.fulfillment.messages[0].speech;
+        var opts = {};
 
         if (res.result.action === 'vote' && res.result.parameters.pub) {
           handleVote(userId, res.result.parameters.pub);
@@ -41,10 +43,19 @@ exports.botHandleMessage = functions.https.onRequest((request, response) => {
         if (res.result.action === 'result') {
           reply = getResults();
         }
-        sendMessage(channel, reply);
+        if (res.result.action === 'whattosay') {
+          reply = 'Wimp. Here you go.';
+          opts = {
+            attachments: [{
+              fallback: 'Booking',
+              text: 'https://storage.googleapis.com/botherbot-186223.appspot.com/translate_tts.mp3'
+            }]
+          }
+        }
+        sendMessage(channel, reply, opts);
         return response.send('ok');
       });
-      
+
       request.on('error', function(error) {
           console.log('error', error);
           return response.send('ok');
@@ -94,8 +105,11 @@ exports.startSurvey = functions.https.onRequest((request, response) => {
   });
 });
 
-const sendMessage = (channel, message) => {
-  web.chat.postMessage(channel, message, {icon_emoji: ':hamburger:', username: 'LunchBot'}, function(err, res) {
+const sendMessage = (channel, message, opts) => {
+  opts = opts || {};
+  web.chat.postMessage(channel, message,
+    Object.assign({}, {icon_emoji: ':hamburger:', username: 'LunchBot'}, opts),
+    function(err, res) {
     if (err) {
         console.log('Error:', err);
     } else {
@@ -170,11 +184,11 @@ exports.nag = functions.https.onRequest((request, response) => {
 
     if (!survey.booked) {
       sendMessage(survey.booker, 'Get to booking, <@' + survey.booker + '>');
-      return response.send('ok');    
+      return response.send('ok');
     } else {
       return response.send('ok');
-    }        
-  });  
+    }
+  });
 });
 
 exports.handleBooked = functions.https.onRequest((request, response) => {
