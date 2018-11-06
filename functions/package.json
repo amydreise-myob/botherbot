@@ -9,12 +9,12 @@
     "logs": "firebase functions:log"
   },
   "dependencies": {
-    "@slack/client": "^3.14.2",
+    "@slack/client": "^4.8.0",
     "actions-on-google": "^1.5.x",
     "apiai": "^4.0.3",
-    "firebase-admin": "~5.5.0",
-    "firebase-functions": "^0.7.3",
-    "lodash": "^4.17.4",
+    "firebase-admin": "^6.1.0",
+    "firebase-functions": "^2.1.0",
+    "lodash": "^4.17.11",
     "uuid": "^3.1.0"
   },
   "private": true
